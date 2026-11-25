@@ -1,0 +1,139 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Create project files
+        run: |
+          mkdir -p www
+          cp index.html www/index.html
+          cat > package.json <<'EOF'
+          {"name":"mera-kharcha","version":"1.4.0","private":true,"dependencies":{"@capacitor/android":"^6.2.0","@capacitor/core":"^6.2.0"},"devDependencies":{"@capacitor/cli":"^6.2.0"}}
+          EOF
+          cat > capacitor.config.json <<'EOF'
+          {"appId":"com.umair.kharcha","appName":"Mera Kharcha","webDir":"www"}
+          EOF
+      - name: Add Android
+        run: |
+          npm install
+          npx cap add android
+      - name: Add print support and signing key
+        run: |
+          D=android/app/src/main/java/com/umair/kharcha
+          cat > $D/PrintPlugin.java <<'EOF'
+          package com.umair.kharcha;
+
+          import android.content.Context;
+          import android.print.PrintAttributes;
+          import android.print.PrintDocumentAdapter;
+          import android.print.PrintManager;
+          import android.webkit.WebView;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+
+          @CapacitorPlugin(name = "PrintPlugin")
+          public class PrintPlugin extends Plugin {
+            @PluginMethod
+            public void print(final PluginCall call) {
+              getActivity().runOnUiThread(() -> {
+                try {
+                  PrintManager pm = (PrintManager) getActivity().getSystemService(Context.PRINT_SERVICE);
+                  WebView wv = getBridge().getWebView();
+                  PrintDocumentAdapter adapter = wv.createPrintDocumentAdapter("Mera Kharcha Report");
+                  pm.print("Mera Kharcha Report", adapter, new PrintAttributes.Builder().build());
+                  call.resolve();
+                } catch (Exception e) {
+                  call.reject(e.getMessage());
+                }
+              });
+            }
+          }
+          EOF
+          cat > $D/MainActivity.java <<'EOF'
+          package com.umair.kharcha;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+            @Override
+            public void onCreate(Bundle savedInstanceState) {
+              registerPlugin(PrintPlugin.class);
+              super.onCreate(savedInstanceState);
+            }
+          }
+          EOF
+          mkdir -p ~/.android
+          cat > key.b64 <<'EOF'
+          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
+          EOF
+          base64 -d key.b64 > ~/.android/debug.keystore
+      - name: Build
+        run: |
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MeraKharcha-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
